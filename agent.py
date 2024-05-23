@@ -37,7 +37,9 @@ class Policy(torch.nn.Module):
         """
             Critic network
         """
-        # TASK 3: critic network for actor-critic algorithm
+        self.fc1_critic = torch.nn.Linear(state_space, self.hidden)
+        self.fc2_critic = torch.nn.Linear(self.hidden, self.hidden)
+        self.fc3_critic = torch.nn.Linear(self.hidden, 1)
 
 
         self.init_weights()
@@ -65,10 +67,12 @@ class Policy(torch.nn.Module):
         """
             Critic
         """
-        # TASK 3: forward in the critic network
+        x_critic = self.tanh(self.fc1_critic(x))
+        x_critic = self.tanh(self.fc2_critic(x_critic))
+        state_value = self.fc3_critic(x_critic)
 
         
-        return normal_dist
+        return normal_dist, state_value
 
 
 class Agent(object):
@@ -112,6 +116,27 @@ class Agent(object):
             # Compute policy gradient loss
             policy_loss = -torch.sum(action_log_probs * adjusted_returns)
 
+        elif algorithm == 'actor_critic':
+            # Compute advantages
+            state_values = torch.stack([self.policy(s)[1].squeeze() for s in states])
+            next_state_values = torch.stack([self.policy(ns)[1].squeeze() for ns in next_states])
+            td_targets = rewards + self.gamma * next_state_values * (1 - done)
+            td_targets = td_targets.unsqueeze(1)  # Reshape to [batch_size, 1] if needed
+            state_values = state_values.unsqueeze(1)  # Reshape to [batch_size, 1] if needed
+            advantages = td_targets - state_values
+
+            # Normalize advantages
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+            # Policy loss
+            actor_loss = -torch.sum(action_log_probs * advantages)
+
+            # Critic loss
+            critic_loss = F.mse_loss(state_values, td_targets)
+
+            # Total loss
+            policy_loss = actor_loss + critic_loss
+
         # Backpropagation and optimization step
         self.optimizer.zero_grad()
         policy_loss.backward()
@@ -125,7 +150,7 @@ class Agent(object):
         """ state -> action (3-d), action_log_densities """
         x = torch.from_numpy(state).float().to(self.train_device)
 
-        normal_dist = self.policy(x)
+        normal_dist, state_value = self.policy(x)
 
         if evaluation:  # Return mean
             return normal_dist.mean, None
