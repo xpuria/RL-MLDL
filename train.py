@@ -40,9 +40,6 @@ def main():
 	policy = Policy(observation_space_dim, action_space_dim)
 	agent = Agent(policy, device=args.device)
 
-    #
-    # TASK 2 and 3: interleave data collection to policy updates
-    #
 
 	for episode in range(args.n_episodes):
 		done = False
@@ -59,7 +56,8 @@ def main():
 			agent.store_outcome(previous_state, state, action_probabilities, reward, done)
 
 			train_reward += reward
-		
+
+		agent.update_policy()  # Update the policy after each episode
 		if (episode+1)%args.print_every == 0:
 			print('Training episode:', episode)
 			print('Episode return:', train_reward)

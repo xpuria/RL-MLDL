@@ -91,27 +91,24 @@ class Agent(object):
         next_states = torch.stack(self.next_states, dim=0).to(self.train_device).squeeze(-1)
         rewards = torch.stack(self.rewards, dim=0).to(self.train_device).squeeze(-1)
         done = torch.Tensor(self.done).to(self.train_device)
+                
+        # Compute discounted returns
+        discounted_returns = discount_rewards(rewards, self.gamma)
+        
+        # Normalize returns
+        returns = (discounted_returns - discounted_returns.mean()) / (discounted_returns.std() + 1e-9)
+        
+        # Compute policy gradient loss
+        policy_loss = -torch.sum(action_log_probs * returns)
 
+        # Backpropagation and optimization step
+        self.optimizer.zero_grad()
+        policy_loss.backward()
+        self.optimizer.step()
+
+        # Clear the trajectory data
         self.states, self.next_states, self.action_log_probs, self.rewards, self.done = [], [], [], [], []
-
-        #
-        # TASK 2:
-        #   - compute discounted returns
-        #   - compute policy gradient loss function given actions and returns
-        #   - compute gradients and step the optimizer
-        #
-
-
-        #
-        # TASK 3:
-        #   - compute boostrapped discounted return estimates
-        #   - compute advantage terms
-        #   - compute actor loss and critic loss
-        #   - compute gradients and step the optimizer
-        #
-
-        return        
-
+        
 
     def get_action(self, state, evaluation=False):
         """ state -> action (3-d), action_log_densities """
