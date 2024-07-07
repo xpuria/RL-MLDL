@@ -15,10 +15,10 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
     def __init__(self, domain=None):
         MujocoEnv.__init__(self, 4)
         utils.EzPickle.__init__(self)
-
+        self.domain = domain
         self.original_masses = np.copy(self.sim.model.body_mass[1:])    # Default link masses
 
-        if domain == 'source':  # Source environment has an imprecise torso mass (1kg shift)
+        if self.domain == 'source':  # Source environment has an imprecise torso mass (1kg shift)
             self.sim.model.body_mass[1] -= 1.0
 
 
@@ -30,14 +30,13 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
     def sample_parameters(self):
         """Sample masses according to a domain randomization distribution"""
         
-        #
-        # TASK 6: implement domain randomization. Remember to sample new dynamics parameter
-        #         at the start of each training episode.
-        
-        raise NotImplementedError()
+        random_masses = self.original_masses.copy()
+        random_masses[1] += np.random.uniform(-0.5, 0.5)  # Randomize thigh mass
+        random_masses[2] += np.random.uniform(-0.5, 0.5)  # Randomize leg mass
+        random_masses[3] += np.random.uniform(-0.5, 0.5)  # Randomize foot mass
+        #[3.53429174 3.92699082 2.71433605 5.0893801 ]
 
-        return
-
+        return random_masses
 
     def get_parameters(self):
         """Get value of mass for each link"""
@@ -85,6 +84,8 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         qpos = self.init_qpos + self.np_random.uniform(low=-.005, high=.005, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-.005, high=.005, size=self.model.nv)
         self.set_state(qpos, qvel)
+        if self.domain == 'source':
+            self.set_random_parameters()
         return self._get_obs()
 
 
