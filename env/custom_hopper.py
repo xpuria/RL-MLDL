@@ -31,11 +31,10 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         """Sample masses according to a domain randomization distribution"""
         
         random_masses = self.original_masses.copy()
-        random_masses[1] += np.random.uniform(-0.5, 0.5)  # Randomize thigh mass
-        random_masses[2] += np.random.uniform(-0.5, 0.5)  # Randomize leg mass
-        random_masses[3] += np.random.uniform(-0.5, 0.5)  # Randomize foot mass
+        random_masses[2] += np.random.uniform(-0.5, 0.5)  # Randomize thigh mass
+        random_masses[3] += np.random.uniform(-0.5, 0.5)  # Randomize leg mass
+        random_masses[4] += np.random.uniform(-0.5, 0.5)  # Randomize foot mass
         #[3.53429174 3.92699082 2.71433605 5.0893801 ]
-
         return random_masses
 
     def get_parameters(self):
