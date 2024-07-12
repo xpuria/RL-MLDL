@@ -78,28 +78,45 @@ class Agent(object):
         self.optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
 
         self.gamma = 0.99
+        self.baseline = 20.0
         self.states = []
         self.next_states = []
         self.action_log_probs = []
         self.rewards = []
         self.done = []
 
+        self.update_policy_methods = {
+            'reinforce': self.update_policy_reinforce,
+            'reinforce_baseline': self.update_policy_reinforce_baseline
+        }
+    
+    def update_policy_reinforce(self, action_log_probs, rewards):
+        discounted_returns = discount_rewards(rewards, self.gamma)
+        # Normalize returns
+        returns = (discounted_returns - discounted_returns.mean()) / (discounted_returns.std() + 1e-9)
+        # Compute policy gradient loss
+        policy_loss = -torch.sum(action_log_probs * returns)
+        return policy_loss
 
-    def update_policy(self):
+    def update_policy_reinforce_baseline(self, action_log_probs, rewards):
+        discounted_returns = discount_rewards(rewards, self.gamma)
+        # Subtract the baseline
+        adjusted_returns = discounted_returns - self.baseline
+        # Normalize the adjusted returns
+        adjusted_returns = (adjusted_returns - adjusted_returns.mean()) / (adjusted_returns.std() + 1e-8)
+        # Compute policy gradient loss
+        policy_loss = -torch.sum(action_log_probs * adjusted_returns)
+        return policy_loss
+
+
+    def update_policy(self, algorithm):
         action_log_probs = torch.stack(self.action_log_probs, dim=0).to(self.train_device).squeeze(-1)
         states = torch.stack(self.states, dim=0).to(self.train_device).squeeze(-1)
         next_states = torch.stack(self.next_states, dim=0).to(self.train_device).squeeze(-1)
         rewards = torch.stack(self.rewards, dim=0).to(self.train_device).squeeze(-1)
         done = torch.Tensor(self.done).to(self.train_device)
-                
-        # Compute discounted returns
-        discounted_returns = discount_rewards(rewards, self.gamma)
-        
-        # Normalize returns
-        returns = (discounted_returns - discounted_returns.mean()) / (discounted_returns.std() + 1e-9)
-        
-        # Compute policy gradient loss
-        policy_loss = -torch.sum(action_log_probs * returns)
+
+        policy_loss = self.update_policy_methods[algorithm](action_log_probs, rewards)
 
         # Backpropagation and optimization step
         self.optimizer.zero_grad()
@@ -134,4 +151,3 @@ class Agent(object):
         self.action_log_probs.append(action_log_prob)
         self.rewards.append(torch.Tensor([reward]))
         self.done.append(done)
-

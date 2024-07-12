@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument('--n-episodes', default=100000, type=int, help='Number of training episodes')
     parser.add_argument('--print-every', default=20000, type=int, help='Print info every <> episodes')
     parser.add_argument('--device', default='cpu', type=str, help='network device [cpu, cuda]')
-
+    parser.add_argument('--algorithm', default='reinforce', type=str, choices=['reinforce', 'reinforce_baseline'], help='Algorithm to use for training [reinforce, reinforce_baseline]')
     return parser.parse_args()
 
 args = parse_args()
@@ -40,6 +40,7 @@ def main():
 	policy = Policy(observation_space_dim, action_space_dim)
 	agent = Agent(policy, device=args.device)
 
+	print(f'Train with {args.algorithm}\n')
 
 	for episode in range(args.n_episodes):
 		done = False
@@ -57,7 +58,7 @@ def main():
 
 			train_reward += reward
 
-		agent.update_policy()  # Update the policy after each episode
+		agent.update_policy(args.algorithm)  # Update the policy after each episode
 		if (episode+1)%args.print_every == 0:
 			print('Training episode:', episode)
 			print('Episode return:', train_reward)
