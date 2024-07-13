@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument('--n-episodes', default=100000, type=int, help='Number of training episodes')
     parser.add_argument('--print-every', default=20000, type=int, help='Print info every <> episodes')
     parser.add_argument('--device', default='cpu', type=str, help='network device [cpu, cuda]')
-    parser.add_argument('--algorithm', default='reinforce', type=str, choices=['reinforce', 'reinforce_baseline'], help='Algorithm to use for training [reinforce, reinforce_baseline]')
+    parser.add_argument('--algorithm', default='reinforce', type=str, choices=['reinforce', 'reinforce_baseline', 'actor_critic'], help='Algorithm to use for training [reinforce, reinforce_baseline]')
     return parser.parse_args()
 
 args = parse_args()
