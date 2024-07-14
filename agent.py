@@ -37,9 +37,9 @@ class Policy(torch.nn.Module):
         """
             Critic network
         """
-        self.fc1_critic = torch.nn.Linear(state_space, self.hidden)
-        self.fc2_critic = torch.nn.Linear(self.hidden, self.hidden)
-        self.fc3_critic = torch.nn.Linear(self.hidden, 1)
+        self.fc1_critic = torch.nn.Linear(state_space, self.hidden)  # First hidden layer for Critic
+        self.fc2_critic = torch.nn.Linear(self.hidden, self.hidden)  # Second hidden layer for Critic
+        self.fc3_critic = torch.nn.Linear(self.hidden, 1)            # Output layer for Critic
 
 
         self.init_weights()
@@ -67,19 +67,20 @@ class Policy(torch.nn.Module):
         """
             Critic
         """
-        x_critic = self.tanh(self.fc1_critic(x))
-        x_critic = self.tanh(self.fc2_critic(x_critic))
-        state_value = self.fc3_critic(x_critic)
+        x_critic = self.tanh(self.fc1_critic(x))  # First hidden layer with Tanh activation
+        x_critic = self.tanh(self.fc2_critic(x_critic))  # Second hidden layer with Tanh activation
+        state_value = self.fc3_critic(x_critic)   # Output layer producing the state value
 
         
-        return normal_dist, state_value
+        return normal_dist, state_value  # Return both the action distribution and the state value
+
 
 
 class Agent(object):
     def __init__(self, policy, device='cpu'):
         self.train_device = device
         self.policy = policy.to(self.train_device)
-        self.optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
+        self.optimizer = torch.optim.Adam(policy.parameters(), lr=1e-4)
 
         self.gamma = 0.99
         self.baseline = 20.0
@@ -89,53 +90,62 @@ class Agent(object):
         self.rewards = []
         self.done = []
 
+        self.update_policy_methods = {
+            'reinforce': self.update_policy_reinforce,
+            'reinforce_baseline': self.update_policy_reinforce_baseline,
+            'actor_critic': self.update_policy_actor_critic
+        }
+    
+    def update_policy_reinforce(self, action_log_probs, rewards):
+        discounted_returns = discount_rewards(rewards, self.gamma)
+        # Normalize returns
+        returns = (discounted_returns - discounted_returns.mean()) / (discounted_returns.std() + 1e-9)
+        # Compute policy gradient loss
+        policy_loss = -torch.sum(action_log_probs * returns)
+        return policy_loss
 
-    def update_policy(self, algorithm):
-        action_log_probs = torch.stack(self.action_log_probs, dim=0).to(self.train_device).squeeze(-1)
+    def update_policy_reinforce_baseline(self, action_log_probs, rewards):
+        discounted_returns = discount_rewards(rewards, self.gamma)
+        # Subtract the baseline
+        adjusted_returns = discounted_returns - self.baseline
+        # Normalize the adjusted returns
+        adjusted_returns = (adjusted_returns - adjusted_returns.mean()) / (adjusted_returns.std() + 1e-8)
+        # Compute policy gradient loss
+        policy_loss = -torch.sum(action_log_probs * adjusted_returns)
+        return policy_loss
+    
+    def update_policy_actor_critic(self, action_log_probs, rewards):
         states = torch.stack(self.states, dim=0).to(self.train_device).squeeze(-1)
         next_states = torch.stack(self.next_states, dim=0).to(self.train_device).squeeze(-1)
-        rewards = torch.stack(self.rewards, dim=0).to(self.train_device).squeeze(-1)
         done = torch.Tensor(self.done).to(self.train_device)
 
         discounted_returns = discount_rewards(rewards, self.gamma)
+        values, next_values = self.get_values(states, next_states)  # Get current and next state values from Critic
+        advantages = discounted_returns - values.squeeze(-1)
+        critic_loss = F.mse_loss(values.squeeze(-1), discounted_returns)
 
-        if algorithm == 'reinforce':                    
-            # Normalize returns
-            returns = (discounted_returns - discounted_returns.mean()) / (discounted_returns.std() + 1e-9)
-            # Compute policy gradient loss
-            policy_loss = -torch.sum(action_log_probs * returns)
-        
-        elif algorithm == 'reinforce_baseline':
-            
-            # Subtract the baseline
-            adjusted_returns = discounted_returns - self.baseline
+        policy_loss = -(action_log_probs * advantages.detach()).sum()  # Compute Actor loss
 
-            # Normalize the adjusted returns
-            adjusted_returns = (adjusted_returns - adjusted_returns.mean()) / (adjusted_returns.std() + 1e-8)
+        total_loss = policy_loss + critic_loss  # Combine losses
 
-            # Compute policy gradient loss
-            policy_loss = -torch.sum(action_log_probs * adjusted_returns)
+        return total_loss
+    
+    def get_values(self, states, next_states):
+        values = []
+        next_values = []
+        for state, next_state in zip(states, next_states):
+            _, value = self.policy(state)  # Get value for the current state
+            _, next_value = self.policy(next_state)  # Get value for the next state
+            values.append(value)
+            next_values.append(next_value)
+        return torch.stack(values), torch.stack(next_values)  # Return stacked values
 
-        elif algorithm == 'actor_critic':
-            # Compute advantages
-            state_values = torch.stack([self.policy(s)[1].squeeze() for s in states])
-            next_state_values = torch.stack([self.policy(ns)[1].squeeze() for ns in next_states])
-            td_targets = rewards + self.gamma * next_state_values * (1 - done)
-            td_targets = td_targets.unsqueeze(1)  # Reshape to [batch_size, 1] if needed
-            state_values = state_values.unsqueeze(1)  # Reshape to [batch_size, 1] if needed
-            advantages = td_targets - state_values
+    def update_policy(self, algorithm):
+        action_log_probs = torch.stack(self.action_log_probs, dim=0).to(self.train_device).squeeze(-1)
+        rewards = torch.stack(self.rewards, dim=0).to(self.train_device).squeeze(-1)
 
-            # Normalize advantages
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        policy_loss = self.update_policy_methods[algorithm](action_log_probs, rewards)
 
-            # Policy loss
-            actor_loss = -torch.sum(action_log_probs * advantages)
-
-            # Critic loss
-            critic_loss = F.mse_loss(state_values, td_targets)
-
-            # Total loss
-            policy_loss = actor_loss + critic_loss
 
         # Backpropagation and optimization step
         self.optimizer.zero_grad()
@@ -150,7 +160,8 @@ class Agent(object):
         """ state -> action (3-d), action_log_densities """
         x = torch.from_numpy(state).float().to(self.train_device)
 
-        normal_dist, state_value = self.policy(x)
+        normal_dist, _ = self.policy(x)  # Get both action distribution and state value
+
 
         if evaluation:  # Return mean
             return normal_dist.mean, None
@@ -170,4 +181,3 @@ class Agent(object):
         self.action_log_probs.append(action_log_prob)
         self.rewards.append(torch.Tensor([reward]))
         self.done.append(done)
-

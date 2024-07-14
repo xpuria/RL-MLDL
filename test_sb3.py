@@ -1,7 +1,7 @@
 import gym
 import os
 import numpy as np
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO
 import argparse
 
 # Import your custom environment if necessary
@@ -13,23 +13,17 @@ def parse_args():
     parser.add_argument('--device', default='cpu', type=str, help='network device [cpu, cuda]')
     parser.add_argument('--render', default=False, action='store_true', help='Render the simulator')
     parser.add_argument('--episodes', default=10, type=int, help='Number of test episodes')
-    parser.add_argument('--algorithm', default='PPO', type=str, choices=['PPO','SAC'], help='Algorithm to use for training [reinforce, reinforce_baseline, actor_critic]')
+    parser.add_argument('--algorithm', default='PPO', type=str, choices=['PPO'], help='Algorithm to use for training')
 
     return parser.parse_args()
 
 args = parse_args()
 
 def test_saved_model(algo, env_id, model_path, num_episodes=10):
-    env = gym.make('CustomHopper-source-v0')
-    #env = CustomHopperEnv() if env_id == 'CustomHopper' else gym.make(env_id)
+    env = gym.make(env_id)
     
     # Load the trained model
-    if algo == 'PPO':
-        model = PPO.load(model_path)
-    elif algo == 'SAC':
-        model = SAC.load(model_path)
-    else:
-        raise ValueError("Algorithm not supported")
+    model = PPO.load(model_path)
     
     # Test the model
     for episode in range(num_episodes):
@@ -45,8 +39,8 @@ def test_saved_model(algo, env_id, model_path, num_episodes=10):
 
 if __name__ == "__main__":
     # Example usage
-    ALGO = args.algorithm  # Change to 'SAC' if you want to test SAC
-    ENV_ID = 'CustomHopper'  # Change to your specific environment
+    ALGO = args.algorithm
+    ENV_ID = 'CustomHopper-target-v0'  # Change to your specific environment
     MODEL_PATH = args.model #'./models/PPO_final_model.zip'  # Change to the path of your saved model
     NUM_EPISODES = 100  # Number of episodes to test the agent
 
