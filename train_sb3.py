@@ -9,7 +9,7 @@ import gym
 from env.custom_hopper import *
 import os
 import argparse
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 
 def parse_args():
@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument('--n-episodes', default=100000, type=int, help='Number of training episodes')
     parser.add_argument('--print-every', default=2000, type=int, help='Print info every <> episodes')
     parser.add_argument('--device', default='cpu', type=str, help='network device [cpu, cuda]')
-    parser.add_argument('--algorithm', default='PPO', type=str, choices=['PPO','SAC'], help='Algorithm to use for training [reinforce, reinforce_baseline, actor_critic]')
+    parser.add_argument('--algorithm', default='PPO', type=str, choices=['PPO'], help='Algorithm to use for training')
     return parser.parse_args()
 
 args = parse_args()
@@ -25,12 +25,7 @@ args = parse_args()
 def train_agent(algo, env_id, total_timesteps, save_path, log_path):
     env = gym.make(env_id)
 
-    if algo == 'PPO':
-        model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=log_path)
-    elif algo == 'SAC':
-        model = SAC('MlpPolicy', env, verbose=1, tensorboard_log=log_path)
-    else:
-        raise ValueError("Algorithm not supported")
+    model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=log_path)
 
     checkpoint_callback = CheckpointCallback(save_freq=10000, save_path=save_path,
                                              name_prefix='rl_model')
@@ -45,7 +40,7 @@ def train_agent(algo, env_id, total_timesteps, save_path, log_path):
 
 if __name__ == "__main__":
 
-    ALGO = args.algorithm  # Change to 'SAC' to use SAC algorithm
+    ALGO = args.algorithm
     ENV_ID = 'CustomHopper-source-v0'  # Change to your specific environment
     TIMESTEPS = args.n_episodes
     SAVE_PATH = './models/'
