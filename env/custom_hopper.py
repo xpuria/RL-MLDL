@@ -9,6 +9,7 @@ import numpy as np
 import gym
 from gym import utils
 from .mujoco_env import MujocoEnv
+from cma import CMAEvolutionStrategy
 
 
 class CustomHopper(MujocoEnv, utils.EzPickle):
@@ -132,6 +133,65 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         """Returns current mjstate"""
         return self.sim.get_state()
 
+
+    def random_search_optimization(self, real_actions, real_rewards, n_trials=100):
+        """Optimize parameters using random search"""
+        best_params = None
+        best_cost = float('inf')
+
+        for _ in range(n_trials):
+            solution = self.sample_parameters()
+            cost = self.evaluate_solution(solution, real_actions, real_rewards)
+            if cost < best_cost:
+                best_cost = cost
+                best_params = solution
+
+        return best_params
+
+
+    def evaluate_solution(self, solution, real_actions, real_rewards):
+        """Evaluate a solution by comparing simulated and real rewards"""
+        self.set_parameters(solution)
+        simulated_rewards = self.simulate_task_with_actions(real_actions)
+
+        # Ensure arrays have the same length
+        min_length = min(len(simulated_rewards), len(real_rewards))
+        simulated_rewards = simulated_rewards[:min_length]
+        real_rewards = real_rewards[:min_length]
+
+        cost = np.sum((simulated_rewards - real_rewards)**2)
+        return cost
+
+    def simulate_task_with_actions(self, actions):
+        """Simulate the task using provided actions and collect rewards"""
+        rewards = []
+        obs = self.reset()
+        for a in actions:
+            ep_reward = 0
+            for action in a:
+                obs, reward, done, _ = self.step(action)
+                ep_reward += reward
+                if done:
+                    break
+        return np.array(rewards)
+    
+    def collect_real_data(self, human, num_episodes=10):
+        """Collect actions and rewards from the target environment"""
+        actions = []
+        rewards = []
+        for _ in range(num_episodes):
+            obs = self.reset()
+            done = False
+            episode_actions = []
+            episode_rewards = 0
+            while not done:
+                action, _ = human.predict(obs)
+                obs, reward, done, _ = self.step(action)
+                episode_actions.append(action)
+                episode_rewards += reward
+            actions.append(episode_actions)
+            rewards.append(episode_rewards)
+        return actions, rewards
 
 
 """
