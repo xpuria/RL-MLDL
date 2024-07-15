@@ -19,12 +19,44 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         self.domain = domain
         self.original_masses = np.copy(self.sim.model.body_mass[1:])    # Default link masses
 
-        # self.ranges = {1: 0.5, 2: 0.5, 3: 0.5}
-        self.ranges = {1:[-0.3, +0.3], 2:[-0.2, 0.2], 3:[-0.5, 0.5]}
+        try:
+            if self.domain == 'sadr':
+                self.ranges = {1: 0, 2: 0, 3: 0}
+            else:
+                self.ranges = {1: 0.3, 2: 0.2, 3: 0.5}
 
+            #ADR
+            self.adr_params = {
+                'ranges': self.ranges,
+                'performance_thresholds': {'low': 50, 'high': 200},
+                'update_step': 0.01,
+                'evaluation_window': 100
+            }
+        except:
+            pass
+            
+        self.performance_buffer = []
+        self.current_episode_reward = 0 
 
         if self.domain == 'source':  # Source environment has an imprecise torso mass (1kg shift)
            self.sim.model.body_mass[1] -= 1.0
+
+    #ADR
+    def update_adr_ranges(self):
+        if len(self.performance_buffer) >= self.adr_params['evaluation_window']:
+            average_performance = np.mean(self.performance_buffer)
+            print(average_performance)
+            for i in range(1, 4):
+                if average_performance > self.adr_params['performance_thresholds']['high']:
+                        self.ranges[i] += self.adr_params['update_step']
+                elif average_performance < self.adr_params['performance_thresholds']['low']:
+                    if self.ranges[i] >= self.adr_params['update_step']:
+                        self.ranges[i] -= self.adr_params['update_step']
+            print("changing ranges")
+            print(self.ranges)
+            
+            self.performance_buffer = []
+
 
 
     def set_random_parameters(self):
@@ -37,14 +69,9 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         
         random_masses = self.original_masses.copy()
         random_masses[0] -= 1.0
-        # index = np.random.randint(1,4)
-        # random_masses[index] = np.random.uniform(self.ranges[index][0], self.ranges[index][1])
-        # random_masses[1] += np.random.uniform(-self.ranges[1], self.ranges[1])  # Randomize thigh mass
-        # random_masses[2] += np.random.uniform(-self.ranges[2], self.ranges[2])  # Randomize leg mass
-        # random_masses[3] += np.random.uniform(-self.ranges[3], self.ranges[3])  # Randomize foot mass
-        random_masses[1] += np.random.uniform(self.ranges[1][0], self.ranges[1][1])  # Randomize thigh mass
-        random_masses[2] += np.random.uniform(self.ranges[2][0], self.ranges[2][1])  # Randomize leg mass
-        random_masses[3] += np.random.uniform(self.ranges[3][0], self.ranges[3][1])  # Randomize foot mass
+        random_masses[1] += np.random.uniform(-self.ranges[1], self.ranges[1])  # Randomize thigh mass
+        random_masses[2] += np.random.uniform(-self.ranges[2], self.ranges[2])  # Randomize leg mass
+        random_masses[3] += np.random.uniform(-self.ranges[3], self.ranges[3])  # Randomize foot mass
         #[3.53429174 3.92699082 2.71433605 5.0893801 ]
 
         return random_masses
@@ -79,6 +106,16 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         done = not (np.isfinite(s).all() and (np.abs(s[2:]) < 100).all() and (height > .7) and (abs(ang) < .2))
         ob = self._get_obs()
 
+        try:
+            self.current_episode_reward += reward  # Accumulate reward
+            if self.domain == 'sadr':
+                if done:
+                    self.performance_buffer.append(self.current_episode_reward)  # Add episode reward to buffer
+                    self.current_episode_reward = 0  # Reset cumulative reward for the next episode
+                    self.update_adr_ranges()  # Update ADR ranges based on cumulative reward
+        except:
+            pass
+
         return ob, reward, done, {}
 
 
@@ -95,7 +132,7 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         qpos = self.init_qpos + self.np_random.uniform(low=-.005, high=.005, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-.005, high=.005, size=self.model.nv)
         self.set_state(qpos, qvel)
-        if self.domain == 'sudr':
+        if self.domain == 'sudr' or self.domain == 'sadr': # Uniform domain randomization or AutoDr
             self.set_random_parameters() 
         return self._get_obs()
 
@@ -133,7 +170,7 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         """Returns current mjstate"""
         return self.sim.get_state()
 
-
+    # DROID
     def random_search_optimization(self, real_actions, real_rewards, n_trials=100):
         """Optimize parameters using random search"""
         best_params = None
@@ -148,7 +185,7 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
 
         return best_params
 
-
+    # DROID
     def evaluate_solution(self, solution, real_actions, real_rewards):
         """Evaluate a solution by comparing simulated and real rewards"""
         self.set_parameters(solution)
@@ -162,6 +199,7 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
         cost = np.sum((simulated_rewards - real_rewards)**2)
         return cost
 
+    # DROID
     def simulate_task_with_actions(self, actions):
         """Simulate the task using provided actions and collect rewards"""
         rewards = []
@@ -175,6 +213,7 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
                     break
         return np.array(rewards)
     
+    # DROID
     def collect_real_data(self, human, num_episodes=10):
         """Collect actions and rewards from the target environment"""
         actions = []
@@ -210,11 +249,20 @@ gym.envs.register(
         kwargs={"domain": "source"}
 )
 
+# UDR
 gym.envs.register(
         id="CustomHopper-sudr-v0",
         entry_point="%s:CustomHopper" % __name__,
         max_episode_steps=500,
         kwargs={"domain": "sudr"}
+)
+
+# ADR
+gym.envs.register(
+        id="CustomHopper-sadr-v0",
+        entry_point="%s:CustomHopper" % __name__,
+        max_episode_steps=500,
+        kwargs={"domain": "sadr"}
 )
 
 gym.envs.register(
