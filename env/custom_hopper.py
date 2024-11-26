@@ -231,8 +231,32 @@ class CustomHopper(MujocoEnv, utils.EzPickle):
             actions.append(episode_actions)
             rewards.append(episode_rewards)
         return actions, rewards
+    #DRIOD
+    def cma_es_optimization(self, real_actions, real_rewards, n_iterations=10):
+        """Optimize parameters using CMA-ES"""
+        
+        x0 = self.get_parameters()
+        sigma0 = 0.1 
 
+        
+        opts = {'maxiter': n_iterations, 'verb_disp': 1, 'popsize': 10}
 
+        es = CMAEvolutionStrategy(x0, sigma0, opts)
+
+        while not es.stop():
+            solutions = es.ask()
+            costs = []
+            for solution in solutions:
+                
+                if np.any(solution <= 0):
+                    cost = np.inf  
+                else:
+                    cost = self.evaluate_solution(solution, real_actions, real_rewards)
+                costs.append(cost)
+            es.tell(solutions, costs)
+            es.disp()
+        best_params = es.result.xbest
+        return best_params
 """
     Registered environments
 """
